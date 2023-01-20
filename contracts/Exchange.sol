@@ -95,4 +95,51 @@ contract Exchange is ERC20 {
         return liquidity;
         // returning uint256
    }
+
+   /**
+    * @dev Returns the amount Eth/Crypto Dev tokens that would be returned to the user
+    * in the swap of CD LP tokens with user-funds
+    */
+   function removeLiquidity(uint _amount) public returns (uint , uint) {
+    require(_amount > 0, "_amount should be greater than zero");
+
+    uint ethReserve = address(this).balance;        // current
+    uint _totalSupply = totalSupply();              // current
+    // The amount of Eth that would be sent back to the user is based
+    // on a ratio
+    // Ratio is -> (Eth sent back to the user) / (current Eth reserve)
+    // = (amount of LP tokens that user wants to withdraw) / (total supply of LP tokens)
+    // Then by some maths -> (Eth sent back to the user)
+    // = (current Eth reserve * amount of LP tokens that user wants to withdraw) / (total supply of LP tokens)
+    uint ethAmount = (ethReserve * _amount)/ _totalSupply;                  // formulae # 1, later transfer
+    // The amount of Crypto Dev token that would be sent back to the user is based
+    // on a ratio
+    // Ratio is -> (Crypto Dev sent back to the user) / (current Crypto Dev token reserve)
+    // = (amount of LP tokens that user wants to withdraw) / (total supply of LP tokens)
+    // Then by some maths -> (Crypto Dev sent back to the user)
+    // = (current Crypto Dev token reserve * amount of LP tokens that user wants to withdraw) / (total supply of LP tokens)
+    uint cryptoDevTokenAmount = (getReserve() * _amount)/ _totalSupply;     // formulae # 2, later transfer
+    // Burn the sent LP tokens from the user's wallet because they are already sent to
+    // remove liquidity
+    _burn(msg.sender, _amount);         // burn(), as opposed to _mint()
+    //---------------------------
+    // TRANSFER # 1: (ETH != ERC20 token, hence .call{}() used)
+    // Transfer `ethAmount` of Eth from the contract to the user's wallet
+    // instead, sue .call{}("")
+    
+    // that's how we coded the transfer of ethAmount from within a contract to an EOA
+    payable(msg.sender).transfer(ethAmount);
+    
+    // TRANSFER # 2: (ERC20 token != ETG, hence, use a f() of ERC20 token std.)
+    // Transfer `cryptoDevTokenAmount` of Crypto Dev tokens from the contract to the user's wallet
+    // .transfer's msg.sender is the contract itself (sender/from)
+    // "msg.sender" below is the user/to who invoked the f() removeLiq()
+    
+    // that's how we coded to send ERC20 tokens from inside a contract to an EOA
+    ERC20(cryptoDevTokenAddress).transfer(msg.sender, cryptoDevTokenAmount);
+    //---------------------------
+    return (ethAmount, cryptoDevTokenAmount);
+    }
+
+    
 }
