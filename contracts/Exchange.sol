@@ -15,7 +15,7 @@ contract Exchange is ERC20 {
     }
     
     /**
-    * @dev Returns the amount of `Crypto Dev Tokens` held by the contract
+    * @dev Returns the amount of `Crypto Dev Tokens` held by the contract (not user)
     */
 
     function getReserve() public view returns (uint256) {
@@ -80,7 +80,9 @@ contract Exchange is ERC20 {
 
          // cryptoDevTokenAmount- what an LP can deposit, IDEALLY, MINIMUM this should be the _amount else revert 
          // cryptoDevTokenReserve - by getReserve();
-         uint256 cryptoDevTokenAmount = (msg.value/ethReserve)*cryptoDevTokenReserve;
+         uint256 cryptoDevTokenAmount = (msg.value/ethReserve)*cryptoDevTokenReserve; 
+        // calculateCD() in addLiquidity.js of Front end
+
         require(_amount >= cryptoDevTokenAmount, "Amount of tokens sent is less than the minimum tokens required");
         // transfer only (cryptoDevTokenAmount user can add) amount of `Crypto Dev tokens` from users account
         // to the contract
@@ -90,7 +92,11 @@ contract Exchange is ERC20 {
         // calc. liquidity = LP tokens to be minted to the LProvider thru _mint()
         liquidity = totalSupply() * (msg.value/ethReserve);
         // the golden ratio * _totalSupply of LP tokens out there in the open market held by LPs will be minted to the current LP
+        
         _mint(msg.sender, liquidity);
+        // IMPORTANT:
+        // the _mint() will anyway be coed after both have been accepted by the contract
+        // to avoid the situation when he already got the CD LP tokens and his eth+CD tokens are yet to be accepted by the contract
         }
         return liquidity;
         // returning uint256
@@ -119,9 +125,15 @@ contract Exchange is ERC20 {
     // Then by some maths -> (Crypto Dev sent back to the user)
     // = (current Crypto Dev token reserve * amount of LP tokens that user wants to withdraw) / (total supply of LP tokens)
     uint cryptoDevTokenAmount = (getReserve() * _amount)/ _totalSupply;     // formulae # 2, later transfer
+    
     // Burn the sent LP tokens from the user's wallet because they are already sent to
     // remove liquidity
+    
+    // IMPORTANT:
+    // first _burn(), then .call{}() and .transfer() CD Tokens
+    // first set the state, then transfer funds, per RE-ENTRANCY
     _burn(msg.sender, _amount);         // burn(), as opposed to _mint()
+    
     //---------------------------
     // TRANSFER # 1: (ETH != ERC20 token, hence .call{}() used)
     // Transfer `ethAmount` of Eth from the contract to the user's wallet
@@ -140,6 +152,84 @@ contract Exchange is ERC20 {
     //---------------------------
     return (ethAmount, cryptoDevTokenAmount);
     }
+
+    /**
+     * @dev returns the amount of Eth/CD tokens that are required to be returned to the user/trader
+     */
+    function getAmountOfTokens(
+    uint256 inputAmount, 
+    uint256 inputReserve, 
+    uint256 outputReserve) 
+    public pure returns (uint256) {
+        require(inputReserve>0 && outputReserve > 0, "Invalid reserves");
+        // We are charging a fee of `1%`
+        // Input amount with fee = (input amount - (1*(input amount)/100)) = ((input amount)*99)/100
+        uint256 inputAmountWithFee = (inputAmount*99)/100;
+        // Because we need to follow the concept of `XY = K` curve
+        // We need to make sure (x + Δx) * (y - Δy) = x * y
+        // So the final formula is Δy = (y * Δx) / (x + Δx)
+        // Δy in our case is `tokens to be received`
+        // Δx = ((input amount)*99)/100, x = inputReserve, y = outputReserve
+        // So by putting the values in the formulae you can get the numerator and denominator
+        uint256 numerator = outputReserve * inputAmountWithFee;
+        uint256 denominator = inputReserve + inputAmountWithFee;
+
+        return numerator / denominator;
+    }
+    
+    /**
+    * @dev Swaps Eth for CryptoDev Tokens
+    * payable bcz we're accepting Ether in the contract for swapping with CD Tokens
+    * to buy _minTokens when selling (payable) Eth
+    */
+   function ethToCryptoDevTokens(uint256 _minTokens) public payable {
+    uint256 tokenReserve = getReserve();
+    // i/p reserve is Eth reserve, RIGHT before we transferred Eth otthe contract for swap
+    // bcz it's (x + Delta x) and 'x' is exclusive of 'Delta x' at this point
+    // hence, (available balance - msg.value)
+    uint256 tokensBought = getAmountOfTokens(       // 1% swap fee taken care of in this f()
+        msg.value,
+        address(this).balance - msg.value,
+        tokenReserve
+    );
+    require(tokensBought >= _minTokens, "Insufficient output amount");
+    // Transfer ERC20 tokensBought to the user
+    // when we did not create a specific interface for .transfer/From() in this contract
+    // and we can use ERC20 directly as we're inheriting OZ's ERC20
+    ERC20(cryptoDevTokenAddress).transfer(msg.sender, tokensBought);
+   }
+
+   /**
+    * @dev Swaps CryptoDev Tokens for Eth
+    * to buy _minEth when selling _tokensSold
+    * no payable this time
+    */
+   function crypotoDevTokensToEth(uint256 _tokensSold, uint256 _minEth) public {
+    uint256 tokenReserve = getReserve();
+    uint256 ethBought = getAmountOfTokens(          // 1% swap fee taken care of in this f()
+        _tokensSold,
+        getReserve(),
+        address(this).balance
+    );
+
+    require(ethBought >= _minEth, "Insufficient output amount");
+    // the contract should trasnferFrom() _tokensSold first from the user's balance of CD tokens
+    // to itself (basically, ERC20 mapping's updated)
+    // Post-approval, of course
+    // then, send the ethBought to the user, once all checks and balances are in place, coded above
+    ERC20(cryptoDevTokenAddress).transferFrom(_msgSender(), address(this), _tokensSold);
+
+    // now, once the contract has ERC20 CD tokens, .call{EthBought}
+    (bool success, ) = msg.sender.call{value: ethBought}("");
+    require(success, "Eth Transfer Failed");
+   }
+
+   
+
+
+
+
+
 
     
 }
