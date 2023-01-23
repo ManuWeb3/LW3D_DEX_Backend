@@ -182,6 +182,8 @@ contract Exchange is ERC20 {
     * payable bcz we're accepting Ether in the contract for swapping with CD Tokens
     * to buy _minTokens when selling (payable) Eth
     */
+
+   // _minTokens sort of expectation
    function ethToCryptoDevTokens(uint256 _minTokens) public payable {
     uint256 tokenReserve = getReserve();
     // i/p reserve is Eth reserve, RIGHT before we transferred Eth otthe contract for swap
@@ -204,8 +206,10 @@ contract Exchange is ERC20 {
     * to buy _minEth when selling _tokensSold
     * no payable this time
     */
+
+   // _minEth sort of expectation
    function crypotoDevTokensToEth(uint256 _tokensSold, uint256 _minEth) public {
-    uint256 tokenReserve = getReserve();
+    //uint256 tokenReserve = getReserve();
     uint256 ethBought = getAmountOfTokens(          // 1% swap fee taken care of in this f()
         _tokensSold,
         getReserve(),
@@ -222,14 +226,5 @@ contract Exchange is ERC20 {
     // now, once the contract has ERC20 CD tokens, .call{EthBought}
     (bool success, ) = msg.sender.call{value: ethBought}("");
     require(success, "Eth Transfer Failed");
-   }
-
-   
-
-
-
-
-
-
-    
+   }    
 }
