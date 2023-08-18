@@ -40,6 +40,8 @@ contract Exchange is ERC20 {
         /*
         If the reserve is empty, intake any user supplied value for
         `Ether` and `Crypto Dev` tokens because there is no ratio currently
+        Reserve empty OR 1st time adding Liquidity can onnly be checked by TGOLD's reserve
+        bcz ethBalance is already updated due to payable, so it won't be zero even at adding Liquidity first time        
         */
        if(cryptoDevTokenReserve == 0) {
         // Transfer the `cryptoDevToken` from the user's account to the contract
